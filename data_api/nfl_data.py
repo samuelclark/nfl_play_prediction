@@ -19,7 +19,7 @@ class NFLGames(object):
         return games
 
     def parse_game(self, game):
-        """Flatten game info for home and away teams into a dictionary.
+        """Fatten game info for home and away teams into a dicktionary.
 
         Args:
             game (nflgame.game.Game) : instance of nfl game
