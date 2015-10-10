@@ -67,12 +67,83 @@ class NFLGames(object):
         for k, v in stats.__dict__.iteritems():
             if k == 'pos_time':
                 v = v.total_seconds()
-            stat_key = "{0}_{1}".format(key, k)
+            stat_key = "game_{0}_{1}".format(key, k)
             flat_stats[stat_key] = v
         return flat_stats
+
+    def _flatten_drive(self, drive):
+        flat_drive = {}
+        for k, v in drive.__dict__.iteritems():
+            if k == 'pos_time':
+                v = v.total_seconds()
+            elif k in ['field_start', 'field_end']:
+                v = v.offset
+            elif k in ['time_start', 'time_end']:
+                v = v.__dict__
+                for each in v:
+                    flat_drive["drive_{0}_{1}".format(k, each)] = v[each]
+                continue
+            elif k in ['_Drive__plays', 'plays', 'game']:
+                continue
+
+            flat_drive["drive_{0}".format(k)] = v
+        return flat_drive
+
+    def _flatten_plays(self, drive):
+        plays = [d for d in drive.plays]
+        exclude_keys = ['players', 'events', 'drive', 'data', '_stats', '_Play__players']
+        flat_plays = []
+        for p in plays:
+            flat_play = {}
+            play_info = p.__dict__
+            for each, val in play_info.iteritems():
+                if each in exclude_keys:
+                    continue
+                if each == 'time':
+                    if val:
+                        val = val.__dict__
+                        val.pop('_GameClock__qtr')
+                        for i, v in val.items():
+                            k = "play_{}".format(i)
+                            flat_play[k] = v
+                    continue
+
+                if each == 'yardline':
+                    if val:
+                        val = val.offset
+
+                k = "play_{}".format(each)
+                flat_play[k] = val
+            flat_plays.append(flat_play)
+        return flat_plays
+
+    def gather_all_info_for_all_plays(self, game):
+        all_plays = []
+        game_info = self.parse_game(game)
+        for drive in game.drives:
+            drive_info = self._flatten_drive(drive)
+            drive_plays = self._flatten_plays(drive)
+            for play_info in drive_plays:
+                combined = {}
+                combined.update(game_info)
+                print " game ", combined.keys()
+                combined.update(drive_info)
+                print " drive ", combined.keys()
+                combined.update(play_info)
+                print " play ", combined.keys()
+                all_plays.append(combined)
+        return all_plays
+
+
+
+
+
+
+
+
 
 nflgames = NFLGames()
 week1_2013_games = nflgames.get_games_by_year(2013, 1)
 g = week1_2013_games[0]
 
-game_info = [nflgames.parse_game(g) for g in week1_2013_games]
+game_info = nflgames.gather_all_info_for_all_plays(g)
