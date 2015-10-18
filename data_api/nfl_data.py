@@ -2,7 +2,8 @@ import nflgame
 
 class NFLGames(object):
     def __init__(self):
-        pass
+        self.scr_summary = None
+        self.current_score = None
 
     def get_games_by_year(self, year, week=None):
         """Returns all games for a given year.
@@ -77,7 +78,8 @@ class NFLGames(object):
             if k == 'pos_time':
                 v = v.total_seconds()
             elif k in ['field_start', 'field_end']:
-                v = v.offset
+                if v:
+                    v = v.offset
             elif k in ['time_start', 'time_end']:
                 v = v.__dict__
                 for each in v:
@@ -114,24 +116,70 @@ class NFLGames(object):
 
                 k = "play_{}".format(each)
                 flat_play[k] = val
+            playid = str(p.playid)
+            if playid in self.scr_summary:
+                result = self.scr_summary[playid]
+                team = result['team']
+                score_type = result['type']
+                desc = result['desc']
+                if score_type == 'TD':
+                    self.current_score[team] += 6
+                    if 'kick is good' in desc:
+                        self.current_score[team] += 1
+                    else:
+                        has_2point_info = desc.split("(")
+                        if len(has_2point_info) > 1:
+                            two_point_info = has_2point_info[1].split(")")[0].split(" ")
+                            two_point = True
+                            for each in [u"failed,", "failed", "blocked", "missed", "aborted"]:
+                                if each in two_point_info:
+                                    two_point = False
+                            if two_point:
+                                if 'run' in two_point_info or 'pass' in two_point_info:
+                                    self.current_score[team] += 2
+
+
+                elif score_type == 'FG':
+                    self.current_score[team] += 3
+
+                elif score_type == 'SAF':
+                    self.current_score[team] += 2
+                else:
+                    print "WARNING found play", team, score_type, desc
+            for team, score in self.current_score.items():
+                if team == drive.team:
+                    flat_play['score_offense'] = score
+                else:
+                    flat_play['score_defense'] = score
             flat_plays.append(flat_play)
         return flat_plays
 
     def gather_all_info_for_all_plays(self, game):
+        self.scr_summary = game.data['scrsummary']
+        self.current_score = {game.home: 0, game.away: 0}
         all_plays = []
         game_info = self.parse_game(game)
+    #     print game
+        fail = False
         for drive in game.drives:
             drive_info = self._flatten_drive(drive)
             drive_plays = self._flatten_plays(drive)
+
             for play_info in drive_plays:
                 combined = {}
                 combined.update(game_info)
-                print " game ", combined.keys()
                 combined.update(drive_info)
-                print " drive ", combined.keys()
                 combined.update(play_info)
-                print " play ", combined.keys()
                 all_plays.append(combined)
+
+
+        if self.current_score[game.home] != game.score_home:
+            fail = True
+        if self.current_score[game.away] != game.score_away:
+            fail = True
+        if fail:
+            print "miss matched scores ", game.eid
+
         return all_plays
 
 
@@ -139,11 +187,26 @@ class NFLGames(object):
 
 
 
-
+"""
+In [18]: with open("nflplays.csv", 'w') as f:
+    w = csv.DictWriter(f, fieldnames=keys)
+    w.writeheader()
+    for p in all_p:
+        w.writerow(p)
+   ....:
+"""
 
 
 nflgames = NFLGames()
-week1_2013_games = nflgames.get_games_by_year(2013, 1)
-g = week1_2013_games[0]
 
-game_info = nflgames.gather_all_info_for_all_plays(g)
+
+all_games = []
+WEEKS = 17
+for y in [2011,2012,2013]:
+    for i in range(1, WEEKS):
+        week_games = nflgames.get_games_by_year(y, i)
+        for game in week_games:
+            game_info = nflgames.gather_all_info_for_all_plays(game)
+            all_games.append(game_info)
+
+print len(all_games)
